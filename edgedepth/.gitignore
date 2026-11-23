@@ -1,0 +1,43 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Datasets (large; KITTI/SceneFlow are CC BY-NC-SA — do not redistribute)
+data/
+samples/
+
+# Model artifacts and calibration (large binaries)
+artifacts/
+
+# Training checkpoints (large); keep the small best.json + *_train.log records
+runs/**/*.pt
+runs/.thermal_rest_until
+
+# Vendored Hailo Dataflow Compiler wheel + generated build outputs
+deploy/vendor/
+deploy/build/
+
+# Hailo SDK / compiler logs
+/*.log
+logs/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Per-target DFC build outputs (large .har/.hef)
+deploy/build_*/
+
+# Scratch outputs (audit scripts write to results/; anything dumped at the root is stray)
+/*.npy
+/*.png
+/*.csv
+/*.json
+/report.md
+notes/_scratch/
+deploy/pi/*.npz
+
+# Local-only Pi tooling (prebuilt viewer exe, viewer venv)
+deploy/pi/viewer/
+deploy/pi/viewer2/env/

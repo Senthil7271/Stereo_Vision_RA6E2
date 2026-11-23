@@ -1,0 +1,30 @@
+################################################################################
+# Automatically-generated file. Do not edit!
+################################################################################
+
+# Add inputs and outputs from these tool invocations to the build variables 
+C_SRCS += \
+../ra/board/ra6e2_bgk/board_init.c \
+../ra/board/ra6e2_bgk/board_leds.c 
+
+C_DEPS += \
+./ra/board/ra6e2_bgk/board_init.d \
+./ra/board/ra6e2_bgk/board_leds.d 
+
+CREF += \
+ra6e2_segger.cref 
+
+OBJS += \
+./ra/board/ra6e2_bgk/board_init.o \
+./ra/board/ra6e2_bgk/board_leds.o 
+
+MAP += \
+ra6e2_segger.map 
+
+
+# Each subdirectory must supply rules for building sources it contributes
+ra/board/ra6e2_bgk/%.o: ../ra/board/ra6e2_bgk/%.c
+	@echo 'Building file: $<'
+	$(file > $@.in,-mcpu=cortex-m33 -mthumb -mlittle-endian -mfloat-abi=hard -mfpu=fpv5-sp-d16 -Os -ffunction-sections -fdata-sections -fno-strict-aliasing -fmessage-length=0 -funsigned-char -Wunused -Wuninitialized -Wall -Wextra -Wmissing-declarations -Wconversion -Wpointer-arith -Wshadow -Waggregate-return -Wno-parentheses-equality -Wfloat-equal -g3 -std=c99 -fshort-enums -fno-unroll-loops -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra_cfg\\fsp_cfg\\bsp" -I"." -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra_gen" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra_cfg\\fsp_cfg" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\src" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra\\fsp\\inc" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra\\fsp\\inc\\api" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra\\fsp\\inc\\instances" -I"C:\\Users\\jhoth\\e2_studio\\workspace\\ra6e2_segger\\ra\\arm\\CMSIS_6\\CMSIS\\Core\\Include" -D_RENESAS_RA_ -D_RA_CORE=CM33 -D_RA_ORDINAL=1 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -x c "$<" -c -o "$@")
+	@clang --target=arm-none-eabi @"$@.in"
+

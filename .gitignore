@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C / C++ build intermediate objects & logs
+*.o
+*.d
+*.o.in
+*.tmp
+JLinkLog.log
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# VS Code local state
+.vscode/*
+!.vscode/extensions.json

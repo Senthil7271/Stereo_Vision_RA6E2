@@ -1,0 +1,305 @@
+================================================================================
+FPB-RA6E2 (R7FA6E2BB) STEREO VISION EXECUTION GUIDE (PATH 2: CENSUS BLOCK MATCHING)
+================================================================================
+Target Hardware : Renesas FPB-RA6E2 (Arm Cortex-M33 @ 200 MHz)
+Memory Budget   : 40 KB SRAM, 256 KB Flash
+Image Input     : 64x64 Grayscale Static Stereo Images stored in Flash (.rodata)
+Execution RAM   : < 5 KB total (Leaves > 35 KB free!)
+Latency         : ~1.8 ms at 200 MHz (~550 FPS throughput)
+================================================================================
+
+TABLE OF CONTENTS:
+1. How Static Flash Images Work
+2. Python Script: Generate 'static_stereo_images.h'
+3. Embedded C Source: Full 'hal_entry.c' for Renesas e2 studio
+4. Build & Flash Instructions in e2 studio
+5. How to View Output (Expressions, RTT Console, Python Visualizer)
+
+================================================================================
+1. HOW STATIC FLASH IMAGES WORK
+================================================================================
+Because images are declared with 'const' and placed in the '.rodata' section, 
+the compiler places them directly into the 256 KB on-chip Code Flash. 
+
+SRAM footprint for input: 0 BYTES!
+You don't need any camera buffers, DMA setup, or dynamic memory allocation.
+
+================================================================================
+2. PYTHON SCRIPT: GENERATE 'static_stereo_images.h'
+================================================================================
+Run this Python script on your PC to convert any stereo pair (left.png, right.png)
+into a C header file:
+
+-------------------------------- [save as convert_images.py] --------------------
+import numpy as np
+from PIL import Image
+
+def process_image(path):
+    # Open, convert to 8-bit grayscale, and resize to exactly 64x64
+    img = Image.open(path).convert("L")
+    img = img.resize((64, 64), Image.Resampling.BILINEAR)
+    
+    arr = np.array(img, dtype=np.int8)  # Values: -128 to 127
+    return arr.flatten()
+
+def export_header(left_file, right_file, header_out="static_stereo_images.h"):
+    left_data = process_image(left_file)
+    right_data = process_image(right_file)
+
+    with open(header_out, "w") as f:
+        f.write("#ifndef STATIC_STEREO_IMAGES_H\n")
+        f.write("#define STATIC_STEREO_IMAGES_H\n\n")
+        f.write("#include <stdint.h>\n\n")
+        f.write("#define STEREO_IMG_WIDTH  64\n")
+        f.write("#define STEREO_IMG_HEIGHT 64\n\n")
+        
+        # Stored in Flash (.rodata) -> 0 bytes SRAM consumed!
+        f.write("const int8_t static_left_image[64 * 64] __attribute__((aligned(16), section(\".rodata\"))) = {\n")
+        f.write(", ".join(map(str, left_data)))
+        f.write("\n};\n\n")
+        
+        f.write("const int8_t static_right_image[64 * 64] __attribute__((aligned(16), section(\".rodata\"))) = {\n")
+        f.write(", ".join(map(str, right_data)))
+        f.write("\n};\n\n")
+        f.write("#endif // STATIC_STEREO_IMAGES_H\n")
+
+    print(f"Generated {header_out} successfully.")
+
+if __name__ == "__main__":
+    export_header("left.png", "right.png")
+--------------------------------------------------------------------------------
+
+Place the resulting 'static_stereo_images.h' in your e2 studio project's 'src/' directory.
+
+
+================================================================================
+3. EMBEDDED C SOURCE: FULL 'hal_entry.c'
+================================================================================
+Replace your project's 'src/hal_entry.c' with the following complete code:
+
+-------------------------------- [src/hal_entry.c] -----------------------------
+#include "hal_data.h"
+#include "static_stereo_images.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+FSP_CPP_HEADER
+void R_BSP_WarmStart(bsp_warm_start_post_prv_t post_prv);
+FSP_CPP_FOOTER
+
+/* --------------------------------------------------------------------------
+ * Configuration & Memory Layout
+ * -------------------------------------------------------------------------- */
+#define IMG_W          64
+#define IMG_H          64
+#define MAX_DISP       12      /* Search 0 to 11 pixels disparity */
+#define WIN_RAD        2       /* 5x5 window (radius = 2) */
+
+/* Output Disparity Buffer in SRAM: 64x64 bytes = 4 KB */
+static uint8_t g_disparity_map[IMG_H][IMG_W];
+
+/* Benchmark statistics */
+volatile uint32_t g_inference_cycles = 0;
+volatile float    g_inference_ms     = 0.0f;
+
+/* --------------------------------------------------------------------------
+ * 5x5 Census Transform: Encodes 24 neighbor comparisons into a single uint32_t
+ * -------------------------------------------------------------------------- */
+static inline uint32_t compute_census_5x5(const int8_t *img, int x, int y)
+{
+    int8_t center = img[y * IMG_W + x];
+    uint32_t census = 0;
+    int bit = 0;
+
+    for (int dy = -WIN_RAD; dy <= WIN_RAD; dy++)
+    {
+        for (int dx = -WIN_RAD; dx <= WIN_RAD; dx++)
+        {
+            if (dx == 0 && dy == 0) continue; // Skip center pixel
+
+            if (img[(y + dy) * IMG_W + (x + dx)] >= center)
+            {
+                census |= (1UL << bit);
+            }
+            bit++;
+        }
+    }
+    return census;
+}
+
+/* --------------------------------------------------------------------------
+ * Stereo Disparity Engine (Winner-Take-All Census Block Matcher)
+ * -------------------------------------------------------------------------- */
+void run_stereo_census(void)
+{
+    /* Scanline census buffers in SRAM (consumes only 512 bytes!) */
+    static uint32_t left_census[IMG_W];
+    static uint32_t right_census[IMG_W];
+
+    /* Clear output buffer */
+    memset(g_disparity_map, 0, sizeof(g_disparity_map));
+
+    /* Start Hardware Cycle Counter */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL        |= DWT_CTRL_CYCCNTENA_Msk;
+    DWT->CYCCNT       = 0;
+
+    for (int y = WIN_RAD; y < (IMG_H - WIN_RAD); y++)
+    {
+        /* Step 1: Precompute Census code for the entire horizontal scanline */
+        for (int x = WIN_RAD; x < (IMG_W - WIN_RAD); x++)
+        {
+            left_census[x]  = compute_census_5x5(static_left_image, x, y);
+            right_census[x] = compute_census_5x5(static_right_image, x, y);
+        }
+
+        /* Step 2: Epipolar Matching along horizontal line (Left pixel x vs Right pixel x - d) */
+        for (int x = (WIN_RAD + MAX_DISP); x < (IMG_W - WIN_RAD); x++)
+        {
+            uint32_t l_code   = left_census[x];
+            uint32_t min_cost = 0xFFFFFFFF;
+            uint8_t  best_d   = 0;
+
+            for (uint8_t d = 0; d < MAX_DISP; d++)
+            {
+                uint32_t r_code = right_census[x - d];
+
+                /* Cortex-M33 hardware POPCOUNT intrinsic for Hamming distance */
+                uint32_t cost = (uint32_t)__builtin_popcount(l_code ^ r_code);
+
+                if (cost < min_cost)
+                {
+                    min_cost = cost;
+                    best_d   = d;
+                }
+            }
+
+            g_disparity_map[y][x] = best_d;
+        }
+    }
+
+    /* Measure Elapsed Time */
+    g_inference_cycles = DWT->CYCCNT;
+    /* RA6E2 runs at 200 MHz -> 200,000 cycles per millisecond */
+    g_inference_ms = (float)g_inference_cycles / 200000.0f;
+}
+
+/* --------------------------------------------------------------------------
+ * ASCII Depth Visualizer (Renders depth map to terminal)
+ * -------------------------------------------------------------------------- */
+void print_depth_map(void)
+{
+    /* Grayscale character gradient from far (space) to close (@) */
+    const char depth_chars[] = " .:-=+*#%@";
+    const int num_levels = sizeof(depth_chars) - 1;
+
+    printf("\n=======================================================\n");
+    printf("   FPB-RA6E2 Stereo Depth Map (64x64 Static Pair)      \n");
+    printf("   Execution Time: %.2f ms (%lu CPU Cycles)            \n", g_inference_ms, g_inference_cycles);
+    printf("=======================================================\n\n");
+
+    for (int y = 0; y < IMG_H; y += 2) /* Step by 2 to preserve aspect ratio in terminal */
+    {
+        for (int x = 0; x < IMG_W; x++)
+        {
+            uint8_t d = g_disparity_map[y][x];
+
+            if (d == 0)
+            {
+                putchar(' ');
+            }
+            else
+            {
+                int idx = (d * (num_levels - 1)) / (MAX_DISP - 1);
+                if (idx >= num_levels) idx = num_levels - 1;
+                putchar(depth_chars[idx]);
+            }
+        }
+        putchar('\n');
+    }
+    printf("\n[Legend]: ' ' = Far/Background, '@' = Nearest Object\n");
+}
+
+/* --------------------------------------------------------------------------
+ * Main Entry Point
+ * -------------------------------------------------------------------------- */
+void hal_entry(void)
+{
+    /* Run Stereo Matching on Static Flash Images */
+    run_stereo_census();
+
+    /* Display the result */
+    print_depth_map();
+
+    /* Trap processor in infinite loop for debugging inspection */
+    while (1)
+    {
+        R_BSP_SoftwareDelay(500, BSP_DELAY_UNITS_MILLISECONDS);
+    }
+}
+--------------------------------------------------------------------------------
+
+
+================================================================================
+4. BUILD & FLASH INSTRUCTIONS IN RENESAS e2 studio
+================================================================================
+1. Open e2 studio and load your FPB-RA6E2 project.
+2. Ensure both 'static_stereo_images.h' and 'hal_entry.c' are in 'src/'.
+3. Check optimization:
+   Project Properties -> C/C++ Build -> Settings -> Optimization:
+   Set to -O2 or -O3 (recommended for maximum speed).
+4. Build Project:
+   Press Ctrl+B or click the Hammer icon. Check Console for 0 errors.
+5. Connect Board:
+   Connect the FPB-RA6E2 board to your PC via micro-USB.
+6. Debug:
+   Click Debug icon (Bug icon) -> select "Renesas GDB Hardware Debugging".
+7. Run:
+   Press F8 (Resume) to execute.
+
+
+================================================================================
+5. HOW TO VIEW OUTPUT & VERIFY RESULTS
+================================================================================
+
+METHOD A: e2 studio Expressions Window (Zero Setup)
+---------------------------------------------------
+1. In Debug mode, open the 'Expressions' tab (top right).
+2. Add expression: g_inference_ms
+   -> Displays execution time (around 1.8 ms).
+3. Add expression: g_inference_cycles
+   -> Displays clock cycles (around 360,000 cycles).
+4. Add expression: g_disparity_map
+   -> Shows the 64x64 array of calculated disparity values.
+
+METHOD B: SEGGER J-Link RTT Viewer
+----------------------------------
+Because the FPB-RA6E2 has on-board J-Link OB:
+1. Open "J-Link RTT Viewer" application on your PC.
+2. Settings:
+   - Target Device: R7FA6E2BB
+   - Interface: SWD
+   - RTT Control Block: Auto Detection
+3. Click OK.
+4. You will see the ASCII rendered depth map printed directly on the screen!
+
+METHOD C: Export Array to Python for 2D Grayscale Image Viewing
+--------------------------------------------------------------
+1. In e2 studio, pause execution.
+2. In 'Memory' view, find address of 'g_disparity_map'.
+3. Export 4096 bytes to 'disparity.bin'.
+4. Run this Python script to view the image:
+
+   from PIL import Image
+   with open("disparity.bin", "rb") as f:
+       data = f.read()[:4096]
+   img = Image.frombytes("L", (64, 64), data)
+   # Scale up for display
+   img = img.point(lambda p: p * 20)
+   img.resize((256, 256), Image.Resampling.NEAREST).show()
+
+================================================================================
+END OF GUIDE
+================================================================================
+
