@@ -1,6 +1,11 @@
 /*******************************************************************************************************************
  * @file    sd_spi.c
- * @brief   High-Speed SPI Hardware/GPIO Interface for Micro SD Card Adapter on Renesas FPB-RA6E2.
+ * @brief   High-Speed SPI Hardware/GPIO Interface for Micro SD Card Adapter on Renesas BGK-RA6E2.
+ *          Pins configured on Arduino Interface:
+ *            - D10 (Pin 25): P301 (CS Output)
+ *            - D11 (Pin 26): P109 (MOSI Output)
+ *            - D12 (Pin 27): P110 (MISO Input with Pull-Up)
+ *            - D13 (Pin 28): P111 (SCK Output)
  *******************************************************************************************************************/
 
 #include "sd_spi.h"
@@ -25,17 +30,17 @@ void sd_spi_init(void)
     /* Enable write access to PFS registers */
     R_BSP_PinAccessEnable();
 
-    /* P205: CS Output, High by default */
-    R_PFS->PORT[2].PIN[5].PmnPFS = 0x00000005U; /* PDR=1, PODR=1, PMR=0 (GPIO Out High) */
+    /* D10: P301 (Pin 25) CS Output, High by default */
+    R_PFS->PORT[3].PIN[1].PmnPFS = 0x00000005U; /* PDR=1, PODR=1, PMR=0 (GPIO Out High) */
 
-    /* P204: SCK Output, Low by default */
-    R_PFS->PORT[2].PIN[4].PmnPFS = 0x00000004U; /* PDR=1, PODR=0, PMR=0 (GPIO Out Low) */
+    /* D13: P111 (Pin 28) SCK Output, Low by default */
+    R_PFS->PORT[1].PIN[11].PmnPFS = 0x00000004U; /* PDR=1, PODR=0, PMR=0 (GPIO Out Low) */
 
-    /* P203: MOSI Output, High by default */
-    R_PFS->PORT[2].PIN[3].PmnPFS = 0x00000005U; /* PDR=1, PODR=1, PMR=0 (GPIO Out High) */
+    /* D11: P109 (Pin 26) MOSI Output, High by default */
+    R_PFS->PORT[1].PIN[9].PmnPFS = 0x00000005U; /* PDR=1, PODR=1, PMR=0 (GPIO Out High) */
 
-    /* P202: MISO Input with Pull-up enabled */
-    R_PFS->PORT[2].PIN[2].PmnPFS = 0x00000010U; /* PDR=0, PCR=1 (Pull-up), PMR=0 (GPIO In) */
+    /* D12: P110 (Pin 27) MISO Input with Pull-up enabled */
+    R_PFS->PORT[1].PIN[10].PmnPFS = 0x00000010U; /* PDR=0, PCR=1 (Pull-up), PMR=0 (GPIO In) */
 
     /* Lock PFS registers */
     R_BSP_PinAccessDisable();
@@ -60,7 +65,7 @@ uint8_t sd_spi_tx_rx_byte(uint8_t byte)
 
     for (int i = 7; i >= 0; i--)
     {
-        /* Set MOSI bit */
+        /* Set MOSI bit (P109) */
         if (byte & (1U << i))
         {
             SD_MOSI_HIGH();
@@ -72,18 +77,18 @@ uint8_t sd_spi_tx_rx_byte(uint8_t byte)
 
         sd_spi_delay();
 
-        /* Clock High: SD card samples MOSI, asserts MISO */
+        /* Clock High (P111): SD card samples MOSI, asserts MISO */
         SD_SCK_HIGH();
 
         sd_spi_delay();
 
-        /* Sample MISO bit */
+        /* Sample MISO bit (P110) */
         if (SD_MISO_READ())
         {
             rx |= (uint8_t)(1U << i);
         }
 
-        /* Clock Low */
+        /* Clock Low (P111) */
         SD_SCK_LOW();
     }
 

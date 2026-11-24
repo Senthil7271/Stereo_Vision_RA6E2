@@ -144,13 +144,17 @@ Stereo_Vision_RA6E2/
 | **LED 2 (Alarm 2)** | `P101` | GPIO Output | On-Board | Critical Stop Indicator (Active High) |
 | **SCI0 UART TX** | `P411` | TXD0 / MOSI0 | J1 Pin 1 | Telemetry Stream (115200 Baud, 8N1) |
 | **SCI0 UART RX** | `P410` | RXD0 / MISO0 | J1 Pin 2 | Host Commands |
-| **SD Card CS** | `P205` | GPIO Output | J1 Pin 8 | Chip Select (Active Low) |
-| **SD Card SCK** | `P204` | SPI Clock | J1 Pin 9 | SPI Mode 0 Clock (~12.5 MHz) |
-| **SD Card MOSI** | `P203` | SPI MOSI | J1 Pin 10 | Master Out, Slave In |
-| **SD Card MISO** | `P202` | SPI MISO | J1 Pin 11 | Master In, Slave Out (Internal Pull-Up) |
-| **SD Card Power** | `+3.3V / +5V` | VCC | J1 / J2 | Clean DC power supply |
-| **SD Card Ground** | `GND` | Ground | J1 / J2 | Common Ground |
-| **J-Link Debug** | SWD / RTT | J-Link Interface | On-Board | Real-time zero-overhead data transfer |
+| **SD Card CS** | `P301` | **D10** (Pin 25) | Chip Select (Active Low, Port 3) |
+| **SD Card MOSI** | `P109` | **D11** (Pin 26) | Master Out, Slave In (Port 1) |
+| **SD Card MISO** | `P110` | **D12** (Pin 27) | Master In, Slave Out (Port 1 Pull-Up) |
+| **SD Card SCK** | `P111` | **D13** (Pin 28) | SPI Clock Mode 0 (Port 1) |
+| **SD Card Ground**| `GND` | **GND** (Pin 29 / Pin 8/9) | Common Ground |
+| **SD Card Power** | `+3.3V / +5V` | **3V3** (Pin 11) / **5V** (Pin 10) | Clean DC Power Supply |
+| **LED 1 (Alarm 1)**| `P100` | **D15** (Pin 32) | Alert Indicator (Active High) |
+| **LED 2 (Alarm 2)**| `P101` | **D14** (Pin 31) | Critical Stop Indicator (Active High) |
+| **SCI0 UART TX** | `P411` | **D1** (Pin 16) | Telemetry Stream (115200 Baud, 8N1) |
+| **SCI0 UART RX** | `P410` | **D0** (Pin 15) | Host Commands |
+| **J-Link Debug** | SWD / RTT | On-Board | Real-time zero-overhead data transfer |
 
 ---
 
