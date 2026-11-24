@@ -138,13 +138,42 @@ Stereo_Vision_RA6E2/
 - **Debugger**: On-board SEGGER J-Link OB
 
 ### Pin Mapping:
-| Peripheral / Function | Pin Name | Signal | Description |
-|---|---|---|---|
-| **LED 1 (Alarm 1)** | `P100` | GPIO Output | Alert Indicator (Active High) |
-| **LED 2 (Alarm 2)** | `P101` | GPIO Output | Critical Stop Indicator (Active High) |
-| **SCI0 UART TX** | `P411` | TXD0 / MOSI0 | Telemetry Stream (115200 Baud, 8N1) |
-| **SCI0 UART RX** | `P410` | RXD0 / MISO0 | Host Commands |
-| **J-Link Debug** | SWD / RTT | J-Link Interface | Real-time zero-overhead data transfer |
+| Peripheral / Function | Pin Name | Signal | Header | Description |
+|---|---|---|---|---|
+| **LED 1 (Alarm 1)** | `P100` | GPIO Output | On-Board | Alert Indicator (Active High) |
+| **LED 2 (Alarm 2)** | `P101` | GPIO Output | On-Board | Critical Stop Indicator (Active High) |
+| **SCI0 UART TX** | `P411` | TXD0 / MOSI0 | J1 Pin 1 | Telemetry Stream (115200 Baud, 8N1) |
+| **SCI0 UART RX** | `P410` | RXD0 / MISO0 | J1 Pin 2 | Host Commands |
+| **SD Card CS** | `P205` | GPIO Output | J1 Pin 8 | Chip Select (Active Low) |
+| **SD Card SCK** | `P204` | SPI Clock | J1 Pin 9 | SPI Mode 0 Clock (~12.5 MHz) |
+| **SD Card MOSI** | `P203` | SPI MOSI | J1 Pin 10 | Master Out, Slave In |
+| **SD Card MISO** | `P202` | SPI MISO | J1 Pin 11 | Master In, Slave Out (Internal Pull-Up) |
+| **SD Card Power** | `+3.3V / +5V` | VCC | J1 / J2 | Clean DC power supply |
+| **SD Card Ground** | `GND` | Ground | J1 / J2 | Common Ground |
+| **J-Link Debug** | SWD / RTT | J-Link Interface | On-Board | Real-time zero-overhead data transfer |
+
+---
+
+## 💾 32GB Micro SD Card SPI & KITTI Dataset Streaming
+
+The system features an on-board **FAT32 Micro SD Card SPI filesystem engine** capable of streaming real-world **KITTI stereo vision driving sequences** directly into the Cortex-M33 execution pipeline:
+
+- **SD Adapter Support**: Standard 6-pin SPI Micro SD card module (CS, SCK, MOSI, MISO, VCC, GND).
+- **Filesystem**: Standard FAT32 with 512-byte sector block access (SDHC 32 GB).
+- **RAM Footprint**: Under **600 bytes** of memory overhead for the entire FAT32 reader.
+- **Dataset Storage (`sd_card_content/`)**:
+  - `/STEREO/` : 128×128 Raw 8-bit uncompressed binary frames (`L0000.BIN`, `R0000.BIN` ... 16 KB each).
+  - `/STEREO64/` : 64×64 Raw 8-bit uncompressed binary frames (`L0000.BIN`, `R0000.BIN` ... 4 KB each).
+  - `CONFIG.TXT` : Hardware metadata & frame configuration.
+- **Auto-Fallback Engine**: The firmware automatically checks for SD card presence at boot. If detected, it plays real KITTI sequences; if absent, it gracefully falls back to the internal on-chip Code Flash dataset!
+
+### Copying Files to Micro SD Card:
+1. Format your 32 GB Micro SD card as **FAT32**.
+2. Copy the contents of the `sd_card_content/` folder directly onto the root of the SD card:
+   - Copy folder `STEREO`
+   - Copy folder `STEREO64`
+   - Copy file `CONFIG.TXT`
+3. Insert the card into the Micro SD adapter connected to FPB-RA6E2 pins `P202` - `P205`.
 
 ---
 
