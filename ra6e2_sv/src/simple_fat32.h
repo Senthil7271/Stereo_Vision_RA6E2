@@ -1,7 +1,6 @@
 /*******************************************************************************************************************
  * @file    simple_fat32.h
- * @brief   Lightweight Read-Only FAT32 Filesystem Parser for Renesas FPB-RA6E2.
- *          Ultra-compact footprint (< 600 bytes SRAM total) designed for 40 KB RAM Cortex-M33.
+ * @brief   Lightweight Read-Only FAT32 Filesystem Parser for Renesas BGK-RA6E2.
  *******************************************************************************************************************/
 
 #ifndef SIMPLE_FAT32_H
@@ -45,12 +44,14 @@ typedef struct
     bool     mounted;
 } fat32_volume_t;
 
-extern fat32_volume_t g_fat32_vol;
+extern fat32_volume_t       g_fat32_vol;
+extern volatile fat32_err_t g_fat32_last_err;
 
 /* Public API */
 fat32_err_t fat32_mount(void);
 fat32_err_t fat32_open(const char *dir_name, const char *file_name, fat32_file_t *p_file);
 fat32_err_t fat32_read(fat32_file_t *p_file, uint8_t *p_dest, uint32_t bytes_to_read, uint32_t *p_actual_read);
+const char* fat32_get_error_str(fat32_err_t err);
 
 #ifdef __cplusplus
 }

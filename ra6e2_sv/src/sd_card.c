@@ -1,6 +1,6 @@
 /*******************************************************************************************************************
  * @file    sd_card.c
- * @brief   Micro SD / SDHC SPI Protocol Driver Implementation for Renesas FPB-RA6E2.
+ * @brief   Micro SD / SDHC SPI Protocol Driver Implementation for Renesas BGK-RA6E2.
  *******************************************************************************************************************/
 
 #include "sd_card.h"
@@ -19,7 +19,25 @@
 #define SD_CMD_TIMEOUT               (2000U)
 #define SD_READ_TIMEOUT              (50000U)
 
-sd_card_info_t g_sd_card_info = { 0 };
+sd_card_info_t    g_sd_card_info = { 0 };
+volatile uint8_t  g_sd_last_cmd0_res = 0xFF;
+volatile sd_err_t g_sd_init_error = SD_ERR_NOT_INITIALIZED;
+
+const char* sd_get_error_str(sd_err_t err)
+{
+    switch (err)
+    {
+        case SD_SUCCESS:             return "SD_OK (Card Ready)";
+        case SD_ERR_TIMEOUT:         return "SD_ERR_TIMEOUT (Command timed out)";
+        case SD_ERR_IDLE_STATE:      return "SD_ERR_IDLE_STATE (CMD0 failed - check MISO/MOSI wiring)";
+        case SD_ERR_VOLTAGE_REJECT:  return "SD_ERR_VOLTAGE_REJECT (CMD8 voltage pattern mismatch)";
+        case SD_ERR_ACMD41_TIMEOUT:  return "SD_ERR_ACMD41_TIMEOUT (Card did not exit idle state)";
+        case SD_ERR_OCR_READ:        return "SD_ERR_OCR_READ (CMD58 OCR read failed)";
+        case SD_ERR_READ_TOKEN:      return "SD_ERR_READ_TOKEN (Data start token 0xFE missing)";
+        case SD_ERR_NOT_INITIALIZED: return "SD_ERR_NOT_INITIALIZED";
+        default:                     return "SD_ERR_UNKNOWN";
+    }
+}
 
 /* Sends a 6-byte SD SPI command frame */
 static uint8_t sd_send_cmd(uint8_t cmd, uint32_t arg, uint8_t crc)
@@ -60,6 +78,7 @@ sd_err_t sd_card_init(void)
 
     g_sd_card_info.initialized = false;
     g_sd_card_info.is_sdhc = false;
+    g_sd_last_cmd0_res = 0xFF;
 
     /* 1. Initialize low-level SPI pins */
     sd_spi_init();
@@ -73,6 +92,7 @@ sd_err_t sd_card_init(void)
     do
     {
         res = sd_send_cmd(CMD0_GO_IDLE_STATE, 0, 0x95);
+        g_sd_last_cmd0_res = res;
         timeout--;
     } while ((res != 0x01) && (timeout > 0));
 
@@ -80,6 +100,7 @@ sd_err_t sd_card_init(void)
     {
         SD_CS_HIGH();
         sd_spi_tx_rx_byte(0xFF);
+        g_sd_init_error = SD_ERR_IDLE_STATE;
         return SD_ERR_IDLE_STATE;
     }
 
@@ -97,6 +118,7 @@ sd_err_t sd_card_init(void)
         if (r7[2] != 0x01 || r7[3] != 0xAA)
         {
             SD_CS_HIGH();
+            g_sd_init_error = SD_ERR_VOLTAGE_REJECT;
             return SD_ERR_VOLTAGE_REJECT;
         }
     }
@@ -114,6 +136,7 @@ sd_err_t sd_card_init(void)
     if (res != 0x00)
     {
         SD_CS_HIGH();
+        g_sd_init_error = SD_ERR_ACMD41_TIMEOUT;
         return SD_ERR_ACMD41_TIMEOUT;
     }
 
@@ -146,6 +169,7 @@ sd_err_t sd_card_init(void)
 
     sd_spi_set_high_speed(true); /* Switch to high speed (>12 MHz) */
     g_sd_card_info.initialized = true;
+    g_sd_init_error = SD_SUCCESS;
 
     return SD_SUCCESS;
 }
@@ -157,7 +181,6 @@ sd_err_t sd_read_sector(uint32_t sector_lba, uint8_t *p_buffer)
         return SD_ERR_NOT_INITIALIZED;
     }
 
-    /* For standard SD (non-SDHC), address is byte-offset; for SDHC (32GB), it is sector LBA */
     uint32_t addr = g_sd_card_info.is_sdhc ? sector_lba : (sector_lba * 512U);
 
     uint8_t res = sd_send_cmd(CMD17_READ_SINGLE_BLOCK, addr, 0xFF);

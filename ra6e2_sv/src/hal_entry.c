@@ -43,6 +43,7 @@ bsp_ipc_semaphore_handle_t g_core_start_semaphore =
 volatile bool     g_sd_card_present = false;
 volatile uint32_t g_sd_frame_count  = 10;     /* 10 stereo pairs in /STEREO64/ or /STEREO/ */
 volatile uint32_t g_sd_active_frame = 0;
+volatile char     g_active_source[40] = "INITIALIZING";
 
 /* SRAM input buffers for SD card streaming (64x64 uint8: 4,096 bytes each = 8 KB total) */
 static uint8_t g_sd_left_frame[64 * 64];
@@ -703,9 +704,12 @@ static void uart_transmit_frame_packet(void)
             break;
     }
 
+    uint32_t total_frames = g_sd_card_present ? g_sd_frame_count : NUM_VIDEO_FRAMES;
+
     snprintf(s_banner, sizeof(s_banner),
         "\r\n==============================================================\r\n"
-        " [FRAME %u/5] Stereo Vision & TinyML Collision Radar\r\n"
+        " [FRAME %u/%u] Stereo Vision & TinyML Collision Radar\r\n"
+        " Source Stream    : %s\r\n"
         "--------------------------------------------------------------\r\n"
         " Obstacle Left    : %d.%d cm [%s]\r\n"
         " Obstacle Center  : %d.%d cm [%s]\r\n"
@@ -717,6 +721,8 @@ static void uart_transmit_frame_packet(void)
         " Execution Time   : %d.%d ms (5x5 Census + Popcount)\r\n"
         "--------------------------------------------------------------\r\n",
         (unsigned int)g_current_frame,
+        (unsigned int)total_frames,
+        (const char*)g_active_source,
         (int)(g_dist_left_cm), (int)((int)(g_dist_left_cm * 10.0f) % 10), (g_dist_left_cm < 200.0f ? "SIDEWALK" : "CLEAR"),
         (int)(g_dist_center_cm), (int)((int)(g_dist_center_cm * 10.0f) % 10), (g_dist_center_cm < 200.0f ? "LEAD VEHICLE" : "CLEAR"),
         (int)(g_dist_right_cm), (int)((int)(g_dist_right_cm * 10.0f) % 10), (g_dist_right_cm < 200.0f ? "SHOULDER" : "CLEAR"),
@@ -807,26 +813,59 @@ void hal_entry(void)
               "  PuTTY Log  : Online - Streaming Multi-Object Telemetry      \r\n"
               "**************************************************************\r\n");
 
-    /* Initialize Micro SD Card SPI & FAT32 Subsystem (Port 2: P205-CS, P204-SCK, P203-MOSI, P202-MISO) */
-    segger_printf("\r\n[SD] Initializing 32GB Micro SD Card on SPI (Port 2)...\r\n");
-    uart_puts("\r\n[SD] Mounting 32GB Micro SD Card via SPI...\r\n");
+    /* Initialize Micro SD Card SPI & FAT32 Subsystem (Arduino Interface: D10-CS, D11-MOSI, D12-MISO, D13-SCK) */
+    segger_printf("\r\n==============================================================\r\n");
+    segger_printf("  RENESAS BGK-RA6E2 STEREO VISION & SD CARD ENGINE (V2.0)     \r\n");
+    segger_printf("  Arduino Pins: D10(P301)-CS, D11(P109)-MOSI, D12(P110)-MISO, D13(P111)-SCK\r\n");
+    segger_printf("==============================================================\r\n");
+
+    uart_puts("\r\n[SD] Mounting 32GB Micro SD Card via SPI (D10-D13)...\r\n");
 
     fat32_err_t fat_err = fat32_mount();
     if (fat_err == FAT32_OK)
     {
         g_sd_card_present = true;
-        segger_printf("[SD] SUCCESS: 32GB Micro SD Card Mounted (FAT32)!\r\n");
-        segger_printf("[SD] Partition LBA: %lu, Cluster Size: %u sectors (%u KB)\r\n",
+        snprintf((char*)g_active_source, sizeof(g_active_source), "32GB SD CARD (KITTI 10-FRAMES)");
+        segger_printf("[SD SUCCESS] 32GB Micro SD Card Mounted (FAT32)!\r\n");
+        segger_printf("[SD SUCCESS] Partition LBA: %lu, Cluster Size: %u sectors (%u KB)\r\n",
                       g_fat32_vol.partition_lba,
                       g_fat32_vol.sectors_per_cluster,
                       (g_fat32_vol.sectors_per_cluster * 512U) / 1024U);
-        uart_puts("[SD] Micro SD Card OK - Streaming Real-World KITTI Stereo Pairs!\r\n");
+        uart_puts("[SD SUCCESS] Streaming 10 Real-World KITTI Stereo Pairs!\r\n");
+
+        /* Visual confirmation on board: 3 synchronized LED flashes */
+        for (int i = 0; i < 3; i++)
+        {
+            bsp_set_all_leds(LED_STATE_ON);
+            R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
+            bsp_set_all_leds(LED_STATE_OFF);
+            R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
+        }
     }
     else
     {
         g_sd_card_present = false;
-        segger_printf("[SD] Notice: SD Card not mounted (Code=%d). Falling back to on-chip Code Flash.\r\n", (int)fat_err);
-        uart_puts("[SD] Using on-chip Code Flash video stream.\r\n");
+        snprintf((char*)g_active_source, sizeof(g_active_source), "FLASH FALLBACK (SD: %s)", sd_get_error_str(g_sd_init_error));
+        segger_printf("\r\n[SD NOTICE] Micro SD Card NOT ACTIVE (%s)\r\n", sd_get_error_str(g_sd_init_error));
+        segger_printf("[SD DIAG] CMD0 raw response = 0x%02X\r\n", (unsigned int)g_sd_last_cmd0_res);
+        if (g_sd_last_cmd0_res == 0xFF)
+        {
+            segger_printf("[SD DIAG] MISO pin (D12 / Pin 27) received 0xFF (No Signal).\r\n"
+                          "          Verify wiring: D10(Pin25)=CS, D11(Pin26)=MOSI, D12(Pin27)=MISO, D13(Pin28)=SCK,\r\n"
+                          "          Power: Pin10(5V) or Pin11(3V3), GND: Pin29.\r\n");
+        }
+        segger_printf("[SD FALLBACK] Automatically falling back to on-chip Code Flash video stream.\r\n\r\n");
+        uart_puts("[SD NOTICE] SD Card not mounted. Playing on-chip Flash dataset.\r\n");
+
+        /* Hardware indication on board: 5 rapid alert blinks */
+        for (int i = 0; i < 5; i++)
+        {
+            bsp_set_led1(LED_STATE_ON);
+            R_BSP_SoftwareDelay(80, BSP_DELAY_UNITS_MILLISECONDS);
+            bsp_set_led1(LED_STATE_OFF);
+            R_BSP_SoftwareDelay(80, BSP_DELAY_UNITS_MILLISECONDS);
+        }
+        bsp_set_all_leds(LED_STATE_OFF);
     }
 
     /* -------------------------------------------------------------------------------------------------------------

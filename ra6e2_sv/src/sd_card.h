@@ -1,6 +1,6 @@
 /*******************************************************************************************************************
  * @file    sd_card.h
- * @brief   Micro SD / SDHC SPI Protocol Driver for Renesas FPB-RA6E2.
+ * @brief   Micro SD / SDHC SPI Protocol Driver for Renesas BGK-RA6E2.
  *          Supports standard 32GB FAT32 SDHC cards with 512-byte sector block addressing.
  *******************************************************************************************************************/
 
@@ -33,12 +33,15 @@ typedef struct
     uint32_t total_sectors;    /* Capacity in 512-byte blocks */
 } sd_card_info_t;
 
-extern sd_card_info_t g_sd_card_info;
+extern sd_card_info_t    g_sd_card_info;
+extern volatile uint8_t  g_sd_last_cmd0_res;
+extern volatile sd_err_t g_sd_init_error;
 
 /* Public API */
-sd_err_t sd_card_init(void);
-sd_err_t sd_read_sector(uint32_t sector_lba, uint8_t *p_buffer);
-sd_err_t sd_read_sectors(uint32_t start_lba, uint32_t count, uint8_t *p_buffer);
+sd_err_t    sd_card_init(void);
+sd_err_t    sd_read_sector(uint32_t sector_lba, uint8_t *p_buffer);
+sd_err_t    sd_read_sectors(uint32_t start_lba, uint32_t count, uint8_t *p_buffer);
+const char* sd_get_error_str(sd_err_t err);
 
 #ifdef __cplusplus
 }

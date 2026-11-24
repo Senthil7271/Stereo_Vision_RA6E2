@@ -1,6 +1,6 @@
 /*******************************************************************************************************************
  * @file    simple_fat32.c
- * @brief   Lightweight Read-Only FAT32 Filesystem Implementation for Renesas FPB-RA6E2.
+ * @brief   Lightweight Read-Only FAT32 Filesystem Implementation for Renesas BGK-RA6E2.
  *******************************************************************************************************************/
 
 #include "simple_fat32.h"
@@ -8,7 +8,23 @@
 #include <string.h>
 #include <ctype.h>
 
-fat32_volume_t g_fat32_vol = { 0 };
+fat32_volume_t       g_fat32_vol = { 0 };
+volatile fat32_err_t g_fat32_last_err = FAT32_OK;
+
+const char* fat32_get_error_str(fat32_err_t err)
+{
+    switch (err)
+    {
+        case FAT32_OK:                return "FAT32_OK (Volume Mounted)";
+        case FAT32_ERR_SD_FAIL:       return "FAT32_ERR_SD_FAIL (Low-level SD SPI failed)";
+        case FAT32_ERR_NO_MBR:        return "FAT32_ERR_NO_MBR (Missing 0x55AA boot signature)";
+        case FAT32_ERR_NO_FAT32:      return "FAT32_ERR_NO_FAT32 (Not formatted as FAT32 / sector != 512)";
+        case FAT32_ERR_DIR_NOT_FOUND: return "FAT32_ERR_DIR_NOT_FOUND (/STEREO64 directory missing)";
+        case FAT32_ERR_FILE_NOT_FOUND:return "FAT32_ERR_FILE_NOT_FOUND (.BIN file missing)";
+        case FAT32_ERR_READ_FAIL:     return "FAT32_ERR_READ_FAIL (Sector read failed)";
+        default:                      return "FAT32_ERR_UNKNOWN";
+    }
+}
 
 /* Single shared 512-byte scratch buffer for metadata */
 static uint8_t s_sector_buf[512];
@@ -70,19 +86,23 @@ fat32_err_t fat32_mount(void)
     g_fat32_vol.mounted = false;
 
     /* 1. Ensure SD card is initialized */
-    if (sd_card_init() != SD_SUCCESS)
+    sd_err_t sd_res = sd_card_init();
+    if (sd_res != SD_SUCCESS)
     {
+        g_fat32_last_err = FAT32_ERR_SD_FAIL;
         return FAT32_ERR_SD_FAIL;
     }
 
     /* 2. Read Sector 0 (MBR or VBR) */
     if (sd_read_sector(0, s_sector_buf) != SD_SUCCESS)
     {
+        g_fat32_last_err = FAT32_ERR_READ_FAIL;
         return FAT32_ERR_READ_FAIL;
     }
 
     if (s_sector_buf[510] != 0x55 || s_sector_buf[511] != 0xAA)
     {
+        g_fat32_last_err = FAT32_ERR_NO_MBR;
         return FAT32_ERR_NO_MBR;
     }
 
@@ -99,6 +119,7 @@ fat32_err_t fat32_mount(void)
         /* Read Volume Boot Record (VBR) */
         if (sd_read_sector(partition_lba, s_sector_buf) != SD_SUCCESS)
         {
+            g_fat32_last_err = FAT32_ERR_READ_FAIL;
             return FAT32_ERR_READ_FAIL;
         }
     }
@@ -119,6 +140,7 @@ fat32_err_t fat32_mount(void)
     uint16_t bytes_per_sector = (uint16_t)(s_sector_buf[0x0B] | (s_sector_buf[0x0C] << 8));
     if (bytes_per_sector != 512)
     {
+        g_fat32_last_err = FAT32_ERR_NO_FAT32;
         return FAT32_ERR_NO_FAT32;
     }
 
@@ -140,6 +162,7 @@ fat32_err_t fat32_mount(void)
     g_fat32_vol.fat_lba = partition_lba + reserved_sectors;
     g_fat32_vol.cluster_begin_lba = g_fat32_vol.fat_lba + (num_fats * g_fat32_vol.sectors_per_fat);
     g_fat32_vol.mounted = true;
+    g_fat32_last_err = FAT32_OK;
 
     return FAT32_OK;
 }

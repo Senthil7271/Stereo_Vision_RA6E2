@@ -7,13 +7,19 @@ C_SRCS += \
 ../src/hal_entry.c \
 ../src/hal_warmstart.c \
 ../src/image_data.c \
-../src/segger_transfer.c 
+../src/sd_card.c \
+../src/sd_spi.c \
+../src/segger_transfer.c \
+../src/simple_fat32.c 
 
 C_DEPS += \
 ./src/hal_entry.d \
 ./src/hal_warmstart.d \
 ./src/image_data.d \
-./src/segger_transfer.d 
+./src/sd_card.d \
+./src/sd_spi.d \
+./src/segger_transfer.d \
+./src/simple_fat32.d 
 
 CREF += \
 ra6e2_sv.cref 
@@ -22,7 +28,10 @@ OBJS += \
 ./src/hal_entry.o \
 ./src/hal_warmstart.o \
 ./src/image_data.o \
-./src/segger_transfer.o 
+./src/sd_card.o \
+./src/sd_spi.o \
+./src/segger_transfer.o \
+./src/simple_fat32.o 
 
 MAP += \
 ra6e2_sv.map 
